@@ -59,40 +59,6 @@ def init_signal_array(d):
     signal_array = np.zeros((4,2*d,2*d))
     return(signal_array.astype(np.int8))
 
-def get_vector(forward_signal_1_array,forward_signal_2_array):
-
-    inter_11_array = forward_signal_1_array[1]
-    inter_12_array = forward_signal_1_array[2]*(inter_11_array==0)
-    inter_13_array = forward_signal_1_array[3]*(inter_11_array==0)*(inter_12_array==0)
-
-    not_inter_1x_array = (inter_11_array==0)*(inter_12_array==0)*(inter_13_array==0)
-
-    inter_20_array = forward_signal_2_array[0]*not_inter_1x_array
-    inter_21_array = forward_signal_2_array[1]*not_inter_1x_array*(inter_20_array==0)
-    inter_23_array = forward_signal_2_array[3]*not_inter_1x_array*(inter_20_array==0)*(inter_21_array==0)
-
-    X = np.stack([inter_20_array-inter_12_array,inter_11_array+inter_21_array-(inter_13_array+inter_23_array)]).astype(np.int8)
-    #print(X[0])
-    vector_array = np.stack(X, axis=-1)
-    #print(np.stack(X, axis=-1).shape)
-
-    return(vector_array)
-
-def slice_on_focus(defect_on_focus,vector_array,r):
-    d = vector_array.shape[0]  # assuming vector_array shape is (d, d, 2)
-    x, y = defect_on_focus
-
-    # Indices for the slice
-    x_indices = np.arange(x - r, x + r + 1) % d
-    y_indices = np.arange(y - r, y + r + 1) % d
-
-    # Extract the subarray with wrap-around
-    slice_array = vector_array[x_indices[:, None],y_indices[None, :],:]
-    #print(slice_array[...,0])
-    compressed_slice_array = slice_array[1::2,1::2,:]
-    #print(compressed_slice_array[...,0])
-    return(compressed_slice_array)
-
 def init_error_array(d,orientation):
     data_array = init_data_array(d)
 
@@ -117,3 +83,9 @@ def fix_defect(defect_array,data_array,rows,cols,values,defect_to_fix):
     data_array[rows, cols] = values
     defect_array[defect_to_fix[0], defect_to_fix[1]] = 0
     return(defect_array,data_array)
+
+def add_artificial_defect(defect_array,dict_artificial_defect,t):
+    if t in dict_artificial_defect:
+        for coord in dict_artificial_defect[t]:
+            defect_array[coord[0], coord[1]] = 1
+    return(defect_array)
