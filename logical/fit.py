@@ -1,86 +1,108 @@
 import numpy as np
-
+import pandas as pd
 from scipy.optimize import curve_fit
 
 
-def fit_pL_single_alg(df,pth_guess,plim_fit):
+def fit_logical(df, pth_guess, plim_fit):
+    """
+    Fit logical error rate pL using:
+        log pL = log(A / d * (p / p_th)^{gamma_d})
+    with one gamma_d per distance d.
+    """
+    for max_stack in df["max_stack"].unique():
+        print(f"Fit logical max stack = {int(max_stack) if max_stack < np.inf else 'inf'}")
+        df_subset = df[df["max_stack"] == max_stack]
 
-    df_fit = df.copy()
-    df_fit = df_fit.dropna(subset="pL")
+        df_fit = (
+            df_subset.copy()
+            .dropna(subset=["logical_error_rate"])
+            .loc[lambda x: x["physical_error_rate"] < plim_fit]
+        )
 
-    df_fit = df_fit[df_fit["error_rate"]<plim_fit]
+        d_values = np.sort(df_fit["code_distance"].unique())
+        d_to_index = {d: i for i, d in enumerate(d_values)}
+        n_d = len(d_values)
 
-    d_list = np.sort(list(set(df_fit["d"].to_list())))
-    dict_d_index = dict(zip(list(d_list),[int(i) for i in range(len(d_list))]))
-    df_fit["i_d"] = df_fit["d"].apply(lambda x: map_id_to_d(x,dict_d_index))
-    df["i_d"] = df["d"].apply(lambda x: map_id_to_d(x,dict_d_index))
+        gamma_guess = [d / 10 for d in d_values]
+        gamma_bounds = [50 for _ in range(n_d)]
 
-    gamma_d_guess_list = [d/10 for d in d_list]
-    gamma_d_bound_list = len(d_list)*[50]
+        initial_guess = np.array(gamma_guess + [0.1, pth_guess])
+        upper_bounds = np.array(gamma_bounds + [100, 2 * pth_guess])
 
-    guess = np.array(gamma_d_guess_list+[0.1,pth_guess])
-    upper_bound = np.array(gamma_d_bound_list+[100,2*pth_guess])
+        xdata = (df_fit["code_distance"].map(d_to_index).to_numpy(),df_fit["code_distance"].to_numpy(), df_fit["physical_error_rate"].to_numpy())
 
-    fit = curve_fit(f=func_logical,xdata=(df_fit["d"].to_numpy(),df_fit["error_rate"].to_numpy(),df_fit["i_d"].to_numpy()),ydata=np.log(df_fit["pL"].to_numpy()),p0=guess,bounds=(0,list(upper_bound)))
+        ydata = np.log(df_fit["logical_error_rate"].to_numpy())
+        popt, _ = curve_fit(
+            f=func_logical,
+            xdata=xdata,
+            ydata=ydata,
+            p0=initial_guess,
+            bounds=(0, upper_bounds),
+        )
 
-    param_opt_value = fit[0]
-    A, pth = param_opt_value[-1], param_opt_value[-2]
+        gamma_d_values = popt[:-2]
+        pth = popt[-2]
+        A = popt[-1]
 
-    df.loc[:,"A"] = A
-    df.loc[:,"pth"] = pth
-    print(A,pth)
-    for i in range(len(d_list)):
-        df.loc[df["i_d"]==i,"gamma_d"] = param_opt_value[i]
+        d_to_gamma_d = dict(zip(d_values, gamma_d_values))
 
-    df = df.drop(columns=["i_d"])
+        df.loc[df["max_stack"] == max_stack, "A"] = A
+        df.loc[df["max_stack"] == max_stack, "error_threshold"] = pth
+        df.loc[df["max_stack"] == max_stack, "effective_distance"] = df["code_distance"].map(d_to_gamma_d)
 
-    return(df)
+        print(f"A = {A}, p_th = {pth}")
+    return df
 
-def fit_gamma_d_single_alg(df):
+def fit_effective_distance(df):
+    """Fit gamma_d(d) = alpha * d^beta."""
+    for max_stack in df["max_stack"].unique():
+        print(f"Fit effective distance max stack = {int(max_stack) if max_stack < np.inf else 'inf'}")
+        df_subset = df[df["max_stack"] == max_stack]
+        df_fit = (
+            df_subset.copy()
+            .dropna(subset=["effective_distance"])
+            .loc[lambda x: (x["code_distance"] >= 9) & (x["code_distance"] <= 100)]
+        )
 
-    df_fit = df.copy()
-    df_fit = df_fit.dropna(subset="gamma_d")
+        popt, _ = curve_fit(
+            f=func_exp,
+            xdata=df_fit["code_distance"].to_numpy(),
+            ydata=df_fit["effective_distance"].to_numpy(),
+            p0=[1, 1],
+            bounds=(0, [5, 1]),
+        )
 
-    df_fit = df_fit[df_fit["d"]>=15]
-    df_fit = df_fit[df_fit["d"]<=100]
+        alpha, beta = popt
+        df.loc[df["max_stack"] == max_stack, "alpha"] = alpha
+        df.loc[df["max_stack"] == max_stack, "beta"] = beta
 
-    fit = curve_fit(f=get_exp,xdata=df_fit["d"].to_numpy(),ydata=df_fit["gamma_d"].to_numpy(),p0=[1,1],bounds=(0,[2,1]))
+        print(f"alpha = {alpha}, beta = {beta}")
+    return df
 
-    param_opt_value = fit[0]
-    alpha, beta = param_opt_value[0], param_opt_value[1]
+def func_logical(X, *params):
+    d_idx, d, p = X
+    gamma_d_list = params[:-2]
+    pth = params[-2]
+    A = params[-1]
 
-    df.loc[:,"alpha"] = alpha
-    df.loc[:,"beta"] = beta
-    print(alpha,beta)
+    gamma_d = [gamma_d_list[int(i)] for i in d_idx]
 
-    return(df)
+    return ansatz(A, d, p, pth, gamma_d)
 
 
-def add_pL_fit(df,key):
-    df.loc[:,key] = np.exp(ansatz(df.loc[:,"A"],df.loc[:,"d"],df.loc[:,"error_rate"],df.loc[:,"pth"],df.loc[:,"gamma_d"]))
-    return(df)
+def add_logical_fit(df, key):
+    df.loc[:, key] = np.exp(ansatz(df["A"], df["code_distance"], df["physical_error_rate"], df["error_threshold"], df["effective_distance"]))
+    return df
 
-def add_gamma_d_fit(df,key):
-    df.loc[:,key] = get_exp(df.loc[:,"d"],df.loc[:,"alpha"],df.loc[:,"beta"])
-    return(df)
 
-def func_logical(X,*param):
-    d, p, i_d = X
-    gamma_d_list = param[:-2]
-    A, pth = param[-1], param[-2]
-    gamma_d = [gamma_d_list[int(i)] for i in i_d]
-    return(ansatz(A,d,p,pth,gamma_d))
+def add_effective_distance_fit(df, key):
+    df.loc[:, key] = func_exp(df["code_distance"], df["alpha"], df["beta"])
+    return df
 
-def ansatz(A,d,p,pth,gamma_d):
-    return(np.log((d*A)*(p/pth)**(gamma_d)))
 
-def get_exp(X,alpha,beta):
-    d = X
-    gamma_d = alpha*d**beta
-    return(gamma_d)
+def ansatz(A, d, p, pth, gamma_d):
+    return np.log(A / d * (p / pth) ** gamma_d)
 
-def map_id_to_d(d,dict_d_index):
-    if d in dict_d_index:
-        return(dict_d_index[d])
-    else:
-        return(float("NaN"))
+
+def func_exp(d, alpha, beta):
+    return alpha * d ** beta

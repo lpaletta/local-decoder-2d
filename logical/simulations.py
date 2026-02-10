@@ -1,145 +1,180 @@
 import os
 import sys
 import time
-
 import numpy as np
 from multiprocessing import Pool, cpu_count, freeze_support
 
+# --- Add parent directory to path ---
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-path_output = "logical/out/"
+# --- Output path ---
+OUT_PATH = "logical/out/"
 
+# --- Core simulation imports ---
 from sgn2d import SIGNAL2D
 from mwpm import *
 from view import *
 
-import param
+# --- Parameters ---
+from param import PHYSICS_PARAMS, DECODER_PARAMS, SIMULATION_PARAMS, update_existing
 
-number_of_cores = 8
+# --- Worker-local globals ---
+W_PHYSICS = None
+W_DECODER = None
+W_SIMULATION = None
+W_MATCHING = None
+W_H = None
+
+# --- Parameter sweeps ---
+code_distance_list = [5, 9, 15, 25, 35, 50, 75, 100]
+error_rate_list = np.round(np.logspace(np.log10(0.001), np.log10(0.01), 14, endpoint=False)[1:], 5).tolist()
+max_stack_list = [3, 7, np.inf]
+
+# --- Run constants ---
+MIN_LOGICAL_ERROR = 1e-8
+DISTANCE_TO_TIME_RUN_RATIO = 20
+
+# --- Simulation control ---
+SIMULATION_UPDATE = {
+    "time_run": 10_000,
+    "time_simulation_max": 10**7,
+    "error_count_max": 100,
+    "recorded_variable": "Data",
+}
+
+DECODER_UPDATE = {"max_stack":np.inf}
+
+update_existing(SIMULATION_PARAMS, SIMULATION_UPDATE)
+update_existing(DECODER_PARAMS,DECODER_UPDATE)
+
+number_of_cores = cpu_count()
+CORE_MULTIPLIER = 1
+
+def init_worker(physics, decoder, simulation, distance):
+    """Initialize worker-local read-only objects."""
+    global W_PHYSICS, W_DECODER, W_SIMULATION, W_MATCHING, W_H
+    W_PHYSICS = physics
+    W_DECODER = decoder
+    W_SIMULATION = simulation
+    W_MATCHING = get_matching(distance)
+    W_H = get_parity_check_matrix(distance)
+
+
+def SIGNAL2D_DECODED(_):
+    """Run one simulation + decoding entirely inside the worker."""
+    d = SIGNAL2D(W_PHYSICS, W_DECODER, W_SIMULATION)
+    syndrome = (W_H @ get_data_as_vector(d)) % 2
+
+    if W_DECODER["online"]:
+        logical_error = int(
+            get_logical_from_array(
+                (d + vector_to_array(W_MATCHING.decode(syndrome))) % 2
+            ) != (0, 0)
+        )
+        unconverged = 0
+    else:
+        unconverged = int(~np.all(syndrome == 0))
+        logical_error = int(
+            get_logical_from_array(d) != (0, 0)
+        ) * int(np.all(syndrome == 0))
+
+    return logical_error, unconverged
+
 
 def main():
-    T_inner_job = param.mc_dict["T_inner_job"]
-    T_cum_max = param.mc_dict["T_cum_max"]
-    number_of_errors_max = param.mc_dict["number_of_errors_max"]
+    T_simulation_max = SIMULATION_PARAMS["time_simulation_max"]
+    error_count_max = SIMULATION_PARAMS["error_count_max"]
 
-    for j in range(len(param.error_rate_list)):
-        param.param_dict["error_rate"] = param.error_rate_list[j]
-        if param.option_dict["meas_error_bool"] and param.option_dict["id_error_rate"]:
-            param.param_dict["meas_error_rate"] = param.error_rate_list[j]
+    for i_e, error_rate in enumerate(error_rate_list):
+        update_existing(PHYSICS_PARAMS, {"data_error_rate": error_rate})
+        update_existing(
+            PHYSICS_PARAMS,
+            {"meas_error_rate": error_rate if PHYSICS_PARAMS["meas_error"] else 0},
+        )
 
-        for k in range(len(param.d_list)):
-            time_i = time.time()
+        for i_d, distance in enumerate(code_distance_list):
 
-            param.param_dict["d"] = param.d_list[k]
+            update_existing(PHYSICS_PARAMS, {"code_distance": distance})
+            update_existing(SIMULATION_PARAMS, {"time_run": DISTANCE_TO_TIME_RUN_RATIO*distance})
 
-            if not param.option_dict["error_bool"]:
-                param.param_dict["T"] = 10*param.param_dict["d"]
-            else:
-                matching = get_matching(param.param_dict["d"])
-            H = get_parity_check_matrix(param.param_dict["d"])
+            for i_m, max_stack in enumerate(max_stack_list):
 
-            print("Proceed to: \n d={}, e={}".format(param.param_dict["d"],param.param_dict["error_rate"]))
+                update_existing(DECODER_PARAMS, {"max_stack": max_stack})
 
-            """A, pth, alpha, beta = X, X, X, X
-            d, p = param.param_dict["d"], param.param_dict["error_rate"]
-            estimate_logical = get_estimate_logical_signal(d,p,A,pth,alpha*d**beta)
-            print("Estimated logical rate: \n {}".format(estimate_logical))
-            if estimate_logical < 10**(-7):
-                continue
-            else:
-                pass"""
+                print(
+                    f"Proceed to:\n d={distance}, "
+                    f"e_d={PHYSICS_PARAMS['data_error_rate']}, "
+                    f"e_m={PHYSICS_PARAMS['meas_error_rate']}, "
+                    f"max_stack={max_stack}"
+                )
 
-            #param_dict,option_dict,view_dict,mc_dict = calibrate_param(param.param_dict,param.option_dict,param.view_dict,param.mc_dict)
-            param_dict,option_dict,view_dict,mc_dict = param.param_dict,param.option_dict,param.view_dict,param.mc_dict
-            args = number_of_cores*[(param_dict,option_dict,view_dict,mc_dict)]
+                time_start = time.time()
 
-            T_cum=0
-            number_of_unconverged=0
-            number_of_errors=0
-            number_of_errors_cum=0
-            number_of_runs=0
-            number_of_jobs=0
+                physics, decoder, simulation = PHYSICS_PARAMS, DECODER_PARAMS, SIMULATION_PARAMS
+                T_run = simulation["time_run"]
 
-            while number_of_errors_cum<number_of_errors_max and T_cum<T_cum_max:
-                with Pool(number_of_cores) as pool:
-                    results = pool.starmap(sMC, args)
+                T_simulation = error_count = run_count = 0
+                error_count_i = unconverged_count_i = run_count_i = 0
 
-                result_data_array = [d for r in results for d in r[0]]
-                result_number_of_runs = [r[1] for r in results]
+                with Pool(
+                    processes=number_of_cores,
+                    initializer=init_worker,
+                    initargs=(physics, decoder, simulation, distance),
+                ) as pool:
 
-                if param.option_dict["error_bool"]:
-                    result_not_converged = [0]*len(result_data_array)
-                    result_error = [int(get_logical_from_array((x+vector_to_array(matching.decode(H@get_data_as_vector(x)%2)))%2) != (0,0)) for x in result_data_array]
-                else:
-                    result_not_converged = [int(~np.all((H@get_data_as_vector(x))%2 == 0)) for x in result_data_array]
-                    result_error = [int(get_logical_from_array(x) != (0,0))*int(np.all((H@get_data_as_vector(x)%2) == 0)) for x in result_data_array]
+                    while (
+                        error_count < error_count_max
+                        and T_simulation < T_simulation_max
+                    ):
 
-                """for bit, x in zip(result_not_converged, result_data_array):
-                    if bit == 0:
-                        #visualize_data(x)
-                        visualize_data(x+vector_to_array(matching.decode(H@get_data_as_vector(x)%2)))
-                        #print(get_logical_from_array(x+vector_to_array(matching.decode(H@get_data_as_vector(x))%2)))
-                        print("")
-                        time.sleep(0.5)"""
+                        batch = pool.map(
+                            SIGNAL2D_DECODED,
+                            range(CORE_MULTIPLIER * number_of_cores),
+                        )
 
-                number_of_unconverged+=np.sum(result_not_converged)
-                number_of_errors+=np.sum(result_error)
-                number_of_errors_cum+=np.sum(result_error)
-                number_of_runs+=np.sum(result_number_of_runs)
-                number_of_jobs+=len(results)
+                        batch_error = [r[0] for r in batch]
+                        batch_unconv = [r[1] for r in batch]
 
-                T_cum+=len(result_not_converged)*T_inner_job
+                        n = len(batch)
+                        T_simulation += n * T_run
+                        error_count += sum(batch_error)
+                        run_count += n
 
-                if (np.sum(number_of_unconverged)>0) or (np.sum(number_of_errors)>=2) or ((T_inner_job*number_of_jobs)>=(T_cum_max/100)):
-                    file = open(path_output+"data_{}_{}.txt".format(j,k), "a")
-                    file.write(str(number_of_errors)+" "+str(number_of_unconverged)+" "+str(number_of_runs)+" "+str(param_dict["T"])+"\n")
-                    file.close()
-                    
-                    number_of_errors=0
-                    number_of_unconverged=0
-                    number_of_runs=0
-                    number_of_jobs=0
-            
-            time_f = time.time()
-            print("Completed in: \n {}s".format(np.around(time_f-time_i,2)))
+                        error_count_i += sum(batch_error)
+                        unconverged_count_i += sum(batch_unconv)
+                        run_count_i += n
 
-def calibrate_param(param,option,view,mc):
-    for T_candidate in [10,20,50,100,200,500,1000]:
-        positive=0
-        number_of_param_jobs=0
+                        if (
+                            unconverged_count_i > 0
+                            or error_count_i > 10
+                            or (T_run * run_count_i) >= T_simulation_max / 100
+                        ):
+                            with open(f"{OUT_PATH}data_{i_e}_{i_d}_{i_m}.txt", "a") as f:
+                                f.write(
+                                    f"{error_count_i} "
+                                    f"{unconverged_count_i} "
+                                    f"{run_count_i} "
+                                    f"{simulation['time_run']}\n"
+                                )
+                            error_count_i = unconverged_count_i = run_count_i = 0
 
-        param["T"] = T_candidate
-        args = number_of_cores*[(param,option,view,mc)]
+                        # --- Real time estimate of the logical error rate to skip runs with too low rate
+                        if (T_simulation > T_simulation_max / 20):
+                            if error_count == 0:
+                                conservative_logical_error = 3.0 / T_simulation
+                            else:
+                                r = error_count / run_count
+                                sigma = (
+                                    np.sqrt(r * (1 - r))
+                                    / (T_run * np.sqrt(run_count))
+                                )
+                                conservative_logical_error = error_count / T_simulation + sigma
 
-        while number_of_param_jobs<100:
-            with Pool(number_of_cores) as pool:
-                #results = [sMC(param,option,view,mc) for i in range(10)]
-                results = pool.starmap(sMC, args)
+                            if conservative_logical_error < MIN_LOGICAL_ERROR :
+                                return
 
-            result_positive = [r[0] for r in results]
-            result_number_of_param_jobs = [r[1] for r in results]
+                            print("Completed in:", round(time.time() - time_start, 2), "s")
 
-            positive+=np.sum(result_positive)
-            number_of_param_jobs+=np.sum(result_number_of_param_jobs)
-        
-        if (positive/number_of_param_jobs)>0.1:
-            param["T"] = T_candidate
-            return(param,option,view,mc)
-    param["T"] = 1000
-    return(param,option,view,mc)
-
-def sMC(param,option,view,mc):
-    T_inner_job = mc["T_inner_job"]
-    T = param["T"]
-    result_data_array = []
-    for i in range(T_inner_job//T):
-        result_data_array.append(SIGNAL2D(param, option, view))
-    return(result_data_array,T_inner_job//T)
-
-def get_estimate_logical_signal(n,p,A,pth,gamma):
-    pL = A*n*(p/pth)**gamma
-    return(pL)
-
-if __name__=="__main__":
+if __name__ == "__main__":
     freeze_support()
     main()

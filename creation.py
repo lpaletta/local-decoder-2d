@@ -1,15 +1,21 @@
 import numpy as np
 
-def create_forward_signals_1(defect_array,forward_signal_1_array,stack_1_array):
-    inter_array = np.stack([np.zeros_like(defect_array)]+[defect_array]*3)*(forward_signal_1_array==0)
+def create_forward_signals_1(defect_array,forward_signal_1_array,stack_1_array,max_stack):
+    if max_stack == None:
+        inter_array = np.stack([np.zeros_like(defect_array)]+[defect_array]*3)*(forward_signal_1_array==0)
+    else:
+        inter_array = np.stack([np.zeros_like(defect_array)]+[defect_array]*3)*(forward_signal_1_array==0)*(stack_1_array<max_stack)
     forward_signal_1_array, stack_1_array = forward_signal_1_array + inter_array, stack_1_array + inter_array
     return(forward_signal_1_array.astype(np.int8),stack_1_array.astype(np.int8))
 
-def create_forward_signals_2(defect_array,forward_signal_1_array,forward_signal_2_array,stack_2_array):
+def create_forward_signals_2(defect_array,forward_signal_1_array,forward_signal_2_array,stack_2_array,max_stack):
     inter_array_0 = (defect_array | forward_signal_1_array[1] | forward_signal_1_array[3])
     inter_array_1 = forward_signal_1_array[2]
     inter_array_3 = forward_signal_1_array[2]
-    inter_array = np.stack([inter_array_0,inter_array_1,np.zeros_like(defect_array),inter_array_3])*(forward_signal_2_array==0)
+    if max_stack == None:
+        inter_array = np.stack([inter_array_0,inter_array_1,np.zeros_like(defect_array),inter_array_3])*(forward_signal_2_array==0)
+    else:
+        inter_array = np.stack([inter_array_0,inter_array_1,np.zeros_like(defect_array),inter_array_3])*(forward_signal_2_array==0)*(stack_2_array<max_stack)
     forward_signal_2_array, stack_2_array = forward_signal_2_array + inter_array, stack_2_array + inter_array
     return(forward_signal_2_array.astype(np.int8),stack_2_array.astype(np.int32))
 

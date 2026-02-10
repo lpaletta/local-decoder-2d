@@ -1,194 +1,470 @@
 import numpy as np
+import pandas as pd
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from matplotlib.colors import to_rgb
-import matplotlib.patches as patches
+from matplotlib.ticker import NullFormatter
 
-# use custom style
-plt.style.use('rgplot')
+# ---------------------------------------------------------------------
+# Plot style
+# ---------------------------------------------------------------------
 
-grey = to_rgb("#D6D6D6")
-light_grey = to_rgb("#F1F1F1")
-magenta = to_rgb("#CE93D8")
+plt.style.use("rgplot")
 
-def plot_f_E(df,fit_bool,key,plim_fit,path_fig):
+# ---------------------------------------------------------------------
+# Figure / font constants
+# ---------------------------------------------------------------------
 
-    fig, ax = plt.subplots(1,1,figsize=(2.7,2.4))
+FIGSIZE_ERROR = (3.2, 2.0)
+FIGSIZE_GAMMA = (1.85, 2.1)
 
-    df_plot = df.copy()
-    df_plot = df_plot.reset_index()
+LABEL_FONTSIZE = 7
+TICK_FONTSIZE_SMALL = 5.5
 
-    plt.gca().set_prop_cycle(plt.rcParams['axes.prop_cycle'])
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    colors[5] = colors[4]
-    colors[4] = magenta
-    i=0
+AXWIDTH = 0.6
+LINEWIDTH = 1.2
+MARKER_SIZE = 2.5
+SCATTER_SIZE = 10
 
-    for d, group in df_plot.groupby("d"):
-        X = group["error_rate"].to_numpy()
-        Y = group["pL"].to_numpy()
-        S = group["sigma"].to_numpy()
-        
-        if d <= 6:
-            ax.errorbar(X,Y,yerr=S,fmt="o",color=grey,capsize=2.5,markersize=5,label="$d=%i$"%d)
-        elif d > 6:
-            ax.errorbar(X,Y,yerr=S,fmt="o",color=colors[i],capsize=2.5,markersize=5,label="$d=%i$"%d)
-            #ax.errorbar(X,Y,yerr=S,fmt="o",capsize=2.5,markersize=5,label="$d=%i$"%d)
-            i+=1
+# ---------------------------------------------------------------------
+# Physical / numerical cutoffs
+# ---------------------------------------------------------------------
 
-    if fit_bool:
-        i=0
-        for name, group in df_plot.groupby("d"):
-            group = group[group["error_rate"]<plim_fit]
-            if name <= 6:
-                ax.plot(group["error_rate"].to_numpy(), group[key].to_numpy(),color=grey, linestyle='dotted')
-            elif name > 6:
-                ax.plot(group["error_rate"].to_numpy(), group[key].to_numpy(),color=colors[i], linestyle='dotted')
-                #ax.plot(group["error_rate"].to_numpy(), group[key].to_numpy(), color = 'black', linestyle='dotted')
-                i+=1
+D_PLOT_CUTOFF = 6
+D_FIT_CUTOFF = 15
+PL_FIT_CUTOFF = 1e-9
 
-    ax.set_xlabel("physical error ($\\varepsilon = \\varepsilon_d = \\varepsilon_m$)",fontsize=7.5,labelpad=0.5)
-    ax.set_ylabel("logical error ($\\varepsilon_L$)",fontsize=7.5,labelpad=0.5)
+# ---------------------------------------------------------------------
+# Axis limits
+# ---------------------------------------------------------------------
+
+X_ERROR_LIM = (1e-3, 1e-2)
+Y_ERROR_LIM = (1e-8, 1e-2)
+
+X_GAMMA_LIM = (0, 110)
+Y_GAMMA_LIM = (0, 30)
+
+# ---------------------------------------------------------------------
+# Colors
+# ---------------------------------------------------------------------
+
+colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+GREY = "#D6D6D6"
+MAGENTA = "#CE93D8"
+NAVY = "#1F3A5F"
+APPLE = "#A8D5A2"
+BLACK = "black"
+
+BLUE, RED, GREEN, YELLOW = colors[:4]
+
+DISTANCE_TO_COLOR = {
+    5: GREY,
+    9: BLUE,
+    15: RED,
+    25: GREEN,
+    35: NAVY,
+    50: YELLOW,
+    75: APPLE,
+    100: MAGENTA,
+}
+
+STACK_TO_COLOR = {
+    3: GREEN,
+    4: GREEN,
+    7: YELLOW,
+    8: YELLOW,
+    np.inf: BLUE,
+}
+
+STACK_TO_MARKER = {
+    3: "^",
+    4: "^",
+    7: "d",
+    8: "d",
+    np.inf: "o",
+}
+
+# ---------------------------------------------------------------------
+# Plots
+# ---------------------------------------------------------------------
+
+def plot_logical(df, fit, key, plim, suffix="", path=""):
+    fig, ax = plt.subplots(figsize=FIGSIZE_ERROR)
+
+    for distance, group in df.groupby("code_distance"):
+        color = DISTANCE_TO_COLOR[distance]
+
+        ax.errorbar(
+            group["physical_error_rate"],
+            group["logical_error_rate"],
+            yerr=group["sigma"],
+            fmt="o",
+            markersize=MARKER_SIZE,
+            linewidth=LINEWIDTH,
+            color=color,
+            label=rf"$d={distance}$",
+        )
+
+        ax.plot(
+            group["physical_error_rate"],
+            group["logical_error_rate"],
+            linewidth=LINEWIDTH,
+            color=color,
+        )
+
+    if fit:
+        for distance, group in df.groupby("code_distance"):
+            group = group[group["physical_error_rate"] < plim]
+            ax.plot(
+                group["physical_error_rate"],
+                group[key],
+                linestyle=":",
+                linewidth=LINEWIDTH,
+                color=DISTANCE_TO_COLOR[distance],
+            )
+
+    ax.set_xlabel(
+        r"physical error ($\varepsilon = \varepsilon_d = \varepsilon_m$)",
+        fontsize=LABEL_FONTSIZE,
+        labelpad=-5,
+    )
+    ax.set_ylabel(
+        r"logical error ($\varepsilon_L$)",
+        fontsize=LABEL_FONTSIZE,
+    )
 
     ax.set_xscale("log")
-    #ax.set_xlim(10**(-2),0.1)
-    #ax.set_xlim(10**(-3),0.01)
-    ax.set_xlim(10**(-3),10**(-2))
-
     ax.set_yscale("log")
-    ax.set_ylim(10**(-8),10**(-3))
-    #ax.set_ylim(10**(-4),10**(-1))
+    ax.set_xlim(*X_ERROR_LIM)
+    ax.set_ylim(*Y_ERROR_LIM)
 
-    ax.tick_params(axis='both', which='major', labelsize=6)
-    ax.tick_params(axis='both', which='minor', labelsize=6)
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.xaxis.tick_top()
+    ax.xaxis.set_label_position("top")
 
-    ax.grid(False)
+    ax.tick_params(labelsize=TICK_FONTSIZE_SMALL, width=AXWIDTH)
 
-    ax.legend(loc="upper left",frameon=False,handletextpad=0.1,labelspacing=0.25,borderpad=0.25,fontsize=7)
+    # Grid (as in original)
+    ax.grid(which='major', color=GREY, linestyle='-', linewidth=AXWIDTH/2, alpha=0.2)
+    ax.grid(which='minor', color=GREY, linestyle='-', linewidth=AXWIDTH/3, alpha=0.2)
+    #ax.grid(False)
 
-    if not fit_bool:
-        plt.savefig(path_fig+"/logical_f_E_wo_fit.pdf")
-    elif fit_bool:
-        plt.savefig(path_fig+"/logical_f_E_{}.pdf".format(key))
+    ax.legend(
+        loc="upper left",
+        frameon=False,
+        fontsize=7,
+        ncol=2,
+        columnspacing=0.5,
+    )
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(AXWIDTH)
+
+    fig.tight_layout()
+    suffix += "_fit" if fit else suffix
+    plt.savefig(f"{path}/logical{suffix}.pdf")
     plt.close()
 
-def plot_gamma_d(df,fit_bool,key,path_fig):
 
-    fig, ax = plt.subplots(1,1,figsize=(1.9,2.4))
+def plot_effective_distance(df, fit, key, suffix="", path=""):
+    fig, ax = plt.subplots(figsize=FIGSIZE_GAMMA)
 
-    plt.gca().set_prop_cycle(plt.rcParams['axes.prop_cycle'])
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    blue = colors[0]
-    black = 'black'
-        
-    d_reduced_list = list(set(df["d"].to_list()))
-    df_plot = df[df["d"].isin(d_reduced_list)] 
+    for max_stack in df["max_stack"].unique():
+        df_subset = df[df["max_stack"] == max_stack]
+        df_plot = df_subset.drop_duplicates(subset="code_distance")
 
-    X = df_plot["d"].to_numpy()
-    Y = df_plot["gamma_d"].to_numpy()
+        ax.scatter(
+            df_plot["code_distance"],
+            df_plot["effective_distance"],
+            s=SCATTER_SIZE,
+            marker=STACK_TO_MARKER[max_stack],
+            color=STACK_TO_COLOR[max_stack],
+            zorder=10,
+            label=rf"$m={int(max_stack) if max_stack < np.inf else 'd'}$",
+        )
+
+        ax.plot(
+            df_plot["code_distance"],
+            df_plot["effective_distance"],
+            linewidth=LINEWIDTH,
+            color=STACK_TO_COLOR[max_stack],
+            zorder=10,
+        )
+
+        if fit:
+            df_fit = df_subset[df_subset["code_distance"] > D_FIT_CUTOFF]
+            alpha = df_fit["alpha"].iloc[0]
+            beta = df_fit["beta"].iloc[0]
+
+            ax.plot(
+                df_fit["code_distance"],
+                df_fit[key],
+                linestyle="dotted",
+                color=STACK_TO_COLOR[max_stack],
+                label=rf"${alpha:.2f}d^{{{beta:.2f}}}$",
+            )
+
+    X_ref = np.linspace(*X_GAMMA_LIM, 50)
+    ax.plot(
+        X_ref,
+        (X_ref + 1) / 2,
+        linewidth=LINEWIDTH,
+        linestyle="dashdot",
+        color=BLACK,
+        label=r"$\frac{d+1}{2}$",
+        zorder=5,
+    )
+
+    ax.set_xlabel(r"distance ($d$)", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel(r"effective distance ($\gamma_d$)", fontsize=LABEL_FONTSIZE)
+
+    ax.set_xlim(*X_GAMMA_LIM)
+    ax.set_ylim(*Y_GAMMA_LIM)
+
+    ax.tick_params(labelsize=TICK_FONTSIZE_SMALL, width=AXWIDTH)
+
+    # Grid (as in original)
+    ax.grid(which='major', color=GREY, linestyle='-', linewidth=AXWIDTH/2, alpha=0.2)
+    ax.grid(which='minor', color=GREY, linestyle='-', linewidth=AXWIDTH/3, alpha=0.2)
+    #ax.grid(False)
+
+    ax.legend(loc="lower right", frameon=False, fontsize=7)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(AXWIDTH)
+
+    fig.tight_layout()
+    suffix += "_fit" if fit else ""
+    plt.savefig(f"{path}/effective_distance{suffix}.pdf")
+    plt.close()
+
+
+
+# import numpy as np
+# import pandas as pd
+
+# import matplotlib.pyplot as plt
+# from matplotlib.colors import to_rgb
+# from matplotlib.ticker import NullLocator, NullFormatter
+# import matplotlib.ticker as ticker
+
+
+# # ---------------------------------------------------------------------
+# # Plot style
+# # ---------------------------------------------------------------------
+
+# plt.style.use('rgplot')
+
+# FIGSIZE_ERROR = (3.2, 2)
+# FIGSIZE_GAMMA = (1.85, 2.1)
+# FIGSIZE_ESTIMATE = (2.55, 2.4)
+
+# LABEL_FONTSIZE = 7
+# TICK_FONTSIZE_SMALL = 5.5
+# TICK_FONTSIZE = 6.5
+# AXWIDTH  = 0.8
+
+# LINEWIDTH = 1.2
+# MARKER_SIZE = 2.5
+# SCATTER_SIZE = 10
+
+# # ---------------------------------------------------------------------
+# # Physical / numerical cutoffs
+# # ---------------------------------------------------------------------
+
+# D_PLOT_CUTOFF = 6
+# D_FIT_CUTOFF = 15
+
+# PL_FIT_CUTOFF = 1e-9
+
+# # ---------------------------------------------------------------------
+# # Axis limits
+# # ---------------------------------------------------------------------
+
+# X_ERROR_LIM = (1e-3, 1e-2)
+# Y_ERROR_LIM = (1e-8, 1e-2)
+
+# X_GAMMA_LIM = (0, 100)
+# Y_GAMMA_LIM = (0, 30)
+
+# # ---------------------------------------------------------------------
+# # Colors
+# # ---------------------------------------------------------------------
+
+# colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+# GREY = "#D6D6D6"
+# LIGHT_GREY = "#F1F1F1"
+# MAGENTA = "#CE93D8"
+# ORANGE = "#FBB03B"
+# TEAL = "#1B9E77"
+# NAVY = "#1F3A5F"
+# SLATE = "#4C72B0"
+# COPPER = "#8C564B"
+# BLACK = "black"
+# LAVENDER = "#C3B1E1"
+# APPLE = "#A8D5A2"
+
+
+# BLUE = colors[0]
+# RED = colors[1]
+# GREEN = colors[2]
+# YELLOW = colors[3]
+
+# DISTANCE_TO_COLOR = {5:GREY,
+#                     9:BLUE,
+#                     15:RED,
+#                     25:GREEN,
+#                     35:NAVY,
+#                     50:YELLOW,
+#                     75:APPLE,
+#                     100:MAGENTA}
+
+# STACK_TO_COLOR = {3:GREEN,
+#                   4:GREEN,
+#                   7:YELLOW,
+#                   8:YELLOW,
+#                   np.inf:BLUE}
+
+# STACK_TO_MARKER = {3:'^',
+#                   4:'^',
+#                   7:'d',
+#                   8:'d',
+#                   np.inf:'o'}
+
+
+# def plot_logical(df, fit, key, plim, path, suffix=""):
+#     fig, ax = plt.subplots(figsize=FIGSIZE_ERROR)
+
+#     df_plot = df.copy().reset_index(drop=True)
+
+#     for distance, group in df_plot.groupby("code_distance"):
+
+#         # ax.errorbar(
+#         #     group["physical_error_rate"], group["logical_error_rate"], yerr=group["sigma"],
+#         #     fmt="o", color=DISTANCE_TO_COLOR[distance], capsize=2.5,
+#         #     markersize=MARKER_SIZE, label=rf"$d={distance}$"
+#         # )
+
+#         # ax.errorbar(
+#         #     group["physical_error_rate"], group["logical_error_rate"], yerr=group["sigma"],
+#         #     fmt="o",                    # square markers instead of circles
+#         #     color=DISTANCE_TO_COLOR[distance], 
+#         #     capsize=3,                  # slightly larger caps
+#         #     elinewidth=1,             # thicker error bars
+#         #     markersize=3,               # slightly bigger markers
+#         #     #markerfacecolor='white',    # hollow markers for contrast
+#         #     markeredgewidth=1,          # thicker edge for clarity
+#         #     label=rf"$d={distance}$"                # slight transparency for overlapping points
+#         # )
+
+#         ax.errorbar(
+#             group["physical_error_rate"], group["logical_error_rate"], yerr=group["sigma"],
+#             fmt='o',                     # line only, no markers
+#             color=DISTANCE_TO_COLOR[distance],
+#             markersize=MARKER_SIZE,
+#             linewidth=LINEWIDTH,
+#             label=rf"$d={distance}$"
+#         )
+#         ax.plot(group["physical_error_rate"], group["logical_error_rate"], color=DISTANCE_TO_COLOR[distance], linewidth=LINEWIDTH)
+
+#     if fit:
+#         for distance, group in df_plot.groupby("code_distance"):
+#             group = group[group["physical_error_rate"] < plim]
+#             ax.plot(group["physical_error_rate"], group[key],
+#                     linestyle=":", linewidth=LINEWIDTH, color=DISTANCE_TO_COLOR[distance])
+
+#     ax.set_xlabel(r"physical error ($\varepsilon = \varepsilon_d = \varepsilon_m$)",
+#                   fontsize=LABEL_FONTSIZE, labelpad=-5)
+#     ax.set_ylabel(r"logical error ($\varepsilon_L$)",
+#                   fontsize=LABEL_FONTSIZE, labelpad=0.5)
+
+#     ax.set_xscale("log")
+#     ax.set_yscale("log")
+#     ax.set_xlim(*X_ERROR_LIM)
+#     ax.set_ylim(*Y_ERROR_LIM)
+
+#     # Disable minor ticks on the x-axis
+#     ax.xaxis.set_minor_formatter(NullFormatter())
+
+#     ax.tick_params(axis="both", which="both", labelsize=TICK_FONTSIZE_SMALL)
+#     ax.xaxis.tick_top()
+#     ax.xaxis.set_label_position("top")
+
+
+#     # Major grid
+#     ax.grid(which='major', color='gray', linestyle='-', linewidth=0.5, alpha=0.2)
+
+#     # Minor grid
+#     ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.3, alpha=0.2)
+
+#     #ax.grid(False)
+
+#     ax.legend(loc="upper left", frameon=False, fontsize=7,
+#               handletextpad=0.1, labelspacing=0.25, borderpad=0.25, ncol=2)
     
-    ax.scatter(X,Y,facecolors=blue, edgecolors=blue,marker='o',s=14,linewidths=1,zorder=-10,label="S2D")
-    ax.plot(X,Y,color=blue,linewidth=1,zorder=-10)
+#     # Thinner axis lines (spines)
+#     for spine in ax.spines.values():
+#         spine.set_linewidth(AXWIDTH)  # default is usually ~1.5
 
-    X = np.linspace(0,100,50)
-    Y = (X+1)/2
-    ax.plot(X,Y,color=black,linestyle="dashdot",zorder=-40,label=" $\\frac{d+1}{2}$")
+#     # Thinner ticks
+#     ax.tick_params(width=AXWIDTH, length=4)  # width of ticks, length in points
 
-    df  = df[df["d"]>15]
+#     fig.tight_layout()
+#     suffix += "_fit" if fit else ""
+#     plt.savefig(f"{path}/logical{suffix}.pdf")
+#     plt.close()
 
-    if fit_bool:
-        alpha = df["alpha"].iloc[0]
-        beta = df["beta"].iloc[0]
-        label="$\\alpha=%.2f, \\beta=%.2f$"%(alpha,beta)
-        ax.plot(df["d"].to_numpy(),df[key].to_numpy(),color=black,linestyle='dotted',label=label)
-        ax.set_title("$\\varepsilon_L = Ad(\\varepsilon/\\varepsilon_{th})^{\\gamma_d}$")
 
-    ax.set_xlabel("distance ($d$)",labelpad=0.5,fontsize=7.5)
-    ax.set_xlim(0,100)
+# def plot_effective_distance(df, fit, key, path):
+#     fig, ax = plt.subplots(figsize=FIGSIZE_GAMMA)
 
-    ax.set_ylabel("effective distance ($\\gamma_d$)",labelpad=0.5,fontsize=7.5)
-    ax.set_ylim(0,40)
+#     for max_stack in df["max_stack"].unique():
+#         df_subset = df[df["max_stack"] == max_stack]
 
-    ax.tick_params(axis='both', which='major', labelsize=7)
-    ax.tick_params(axis='both', which='minor', labelsize=7)
+#         df_plot = df_subset.copy().drop_duplicates(subset="code_distance")
 
-    ax.grid(False)
-    ax.legend(loc="lower right",frameon=False,fontsize=7)
+#         ax.scatter(df_plot["code_distance"], df_plot["effective_distance"],
+#                 s=SCATTER_SIZE, color=STACK_TO_COLOR[max_stack], marker=STACK_TO_MARKER[max_stack], zorder=-10, label=f"$m={int(max_stack) if max_stack < np.inf else 'd'}$")
+#         ax.plot(df_plot["code_distance"], df_plot["effective_distance"],
+#                 color=STACK_TO_COLOR[max_stack], linewidth=LINEWIDTH, zorder=-10)
 
-    fig.tight_layout(pad=0.4, w_pad=0.1, h_pad=0.1)
+#         if fit:
+#             df_fit = df_subset[df_subset["code_distance"] > D_FIT_CUTOFF]
+#             alpha = df_fit["alpha"].iloc[0]
+#             beta = df_fit["beta"].iloc[0]
 
-    if not fit_bool:
-        plt.savefig(path_fig+"/gamma_f_d_wo_fit.pdf")
-    elif fit_bool:
-        plt.savefig(path_fig+"/gamma_f_d.pdf")
-    plt.close()
+#             ax.plot(df_fit["code_distance"], df_fit[key],
+#                     linestyle="dotted", color=STACK_TO_COLOR[max_stack],
+#                     label=rf"${alpha:.2f}d^{{{beta:.2f}}}$")
 
-def plot_estimate_f_n(df,df_proof,path_fig):
-    fig, ax = plt.subplots(1,1,figsize=(2.55,2.4))
+#             ax.set_title(r"$\varepsilon_L = A d (\varepsilon/\varepsilon_{th})^{\gamma_d}$")
 
-    plt.gca().set_prop_cycle(plt.rcParams['axes.prop_cycle'])
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    blue = colors[0]
-    yellow = colors[3]
-    grey = colors[4]
-    black = 'black'
+#     X_ref = np.linspace(*X_GAMMA_LIM, 50)
+#     ax.plot(X_ref, (X_ref + 1) / 2,
+#                 linestyle="dashdot", color=BLACK,
+#                 label=r"$\frac{d+1}{2}$", zorder=-40)
 
-    rect = patches.Rectangle((10**(-9), 0), 1, 100, linewidth=0, edgecolor=None, facecolor=light_grey,zorder=-40)
-    ax.add_patch(rect)
+#     ax.set_xlabel(r"distance ($d$)", fontsize=LABEL_FONTSIZE, labelpad=0.5)
+#     ax.set_ylabel(r"effective distance ($\gamma_d$)", fontsize=LABEL_FONTSIZE, labelpad=0.5)
 
-    df_plot = df.copy()
-    df_plot = df_plot.reset_index()
+#     ax.set_xlim(*X_GAMMA_LIM)
+#     ax.set_ylim(*Y_GAMMA_LIM)
 
-    error_rate=0.001
-    group_0001=df_plot[df_plot["error_rate"]==error_rate]
-    X_proof = df_proof[df_proof["error_rate"]==error_rate]["pL"].to_numpy()
-    Y_proof = df_proof[df_proof["error_rate"]==error_rate]["d"].to_numpy()
-    S_proof = df_proof[df_proof["error_rate"]==error_rate]["sigma"].to_numpy()
-    ax.scatter(X_proof,Y_proof,facecolors='white', edgecolors=blue,marker='o',s=50,linewidths=1,zorder=-8)
-    ax.errorbar(X_proof,Y_proof,xerr=S_proof,fmt="o",color=blue,capsize=3,markersize=6,zorder=-9)
-    Y = group_0001["d"].to_numpy()
-    X = group_0001["pL_fit"].to_numpy()
-    Y_inf = group_0001[group_0001["pL_fit"]<10**(-9)]["d"].to_numpy()
-    X_inf = group_0001[group_0001["pL_fit"]<10**(-9)]["pL_fit"].to_numpy()
-    Y_sup = group_0001[group_0001["pL_fit"]>10**(-9)]["d"].to_numpy()
-    X_sup = group_0001[group_0001["pL_fit"]>10**(-9)]["pL_fit"].to_numpy()
-    ax.scatter(X_inf,Y_inf,facecolors='white', edgecolors=blue,marker='o',s=16,linewidths=1,zorder=-9)
-    ax.scatter(X_sup,Y_sup,facecolors=light_grey, edgecolors=blue,marker='o',s=16,linewidths=1,zorder=-0)
-    ax.plot(X,Y,color=blue,linewidth=1,zorder=-10)
-    error_rate=0.01
-    group_001=df_plot[df_plot["error_rate"]==error_rate]
-    X_proof = df_proof[df_proof["error_rate"]==error_rate]["pL"].to_numpy()
-    Y_proof = df_proof[df_proof["error_rate"]==error_rate]["d"].to_numpy()
-    S_proof = df_proof[df_proof["error_rate"]==error_rate]["sigma"].to_numpy()
-    ax.errorbar(X_proof,Y_proof,xerr=S_proof,fmt="o",color=blue,capsize=3,markersize=6,zorder=-9)
-    Y = group_001["d"].to_numpy()
-    X = group_001["pL_fit"].to_numpy()
-    ax.scatter(X,Y,facecolors=blue, edgecolors=blue,marker='o',s=16,linewidths=1,zorder=-10)
-    ax.plot(X,Y,color=blue,linewidth=1,zorder=-10)
+#     ax.tick_params(axis="both", which="both", labelsize=TICK_FONTSIZE_SMALL)
+#     ax.grid(False)
 
-    ax.scatter([],[],color=light_grey,linewidth=1,label="$\\varepsilon = 10^{-2}$")
-    ax.scatter([],[],color=light_grey,linewidth=1,label="$\\varepsilon = 10^{-3}$")
+#     ax.legend(loc="lower right", frameon=False, fontsize=7)
 
-    ax.set_xlabel("logical error ($\\varepsilon_L$)",fontsize=7.5,labelpad=0.5)
-    ax.set_ylabel("distance ($d$)",fontsize=7.5,labelpad=5,rotation=-90)
+#     for spine in ax.spines.values():
+#         spine.set_linewidth(AXWIDTH)  # default is usually ~1.5
 
-    ax.set_xscale("log")
-    ax.set_xlim(10**(-14),10**(-6))
-    ax.set_ylim(0,100)
+#     # Thinner ticks
+#     ax.tick_params(width=AXWIDTH, length=4)  # width of ticks, length in points
 
-    ax.tick_params(axis='both', which='major', labelsize=7)
-    ax.tick_params(axis='both', which='minor', labelsize=7)
+#     fig.tight_layout()
 
-    ax.yaxis.set_label_position("right")
-    ax.yaxis.tick_right()
-
-    ax.grid(False)
-
-    ax.legend(loc="upper right",fontsize=7,frameon=False)
-
-    fig.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
-
-    plt.savefig(path_fig+"/logical_estimate_f_d.pdf")
-    
-    plt.close()
+#     suffix = "" if not fit else "_fit"
+#     plt.savefig(f"{path}/effective_distance{suffix}.pdf")
+#     plt.close()
