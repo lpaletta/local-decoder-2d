@@ -1,6 +1,6 @@
 # Code for "Local decoder for the toric code with a high pseudo-threshold"
 
-This repository presents the code used for the numerical simulations in the paper "Local decoder for the toric code with a high pseudo-threshold". The code is organized into the five foolowing folders.
+This repository presents the code used for the numerical simulations in the paper "Local decoder for the toric code with a high pseudo-threshold". The code is organized into the five following folders.
 
 1. [convergence] Analysis of the convergence speed of the normalized jump rate to the logical error rate - (EM) Fig.5 (b-c)
 2. [logical] Analysis of the logical error rate - (Main text) Fig.4 (a-b)
