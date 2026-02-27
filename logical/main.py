@@ -19,7 +19,7 @@ from plot import *
 DATA_PATH = "logical/data/"
 FIG_PATH = "logical/fig/"
 
-DATA_FILE = "data.csv"
+DATA_FILE = "data_2.csv"
 PROOF_FILE = "proof.csv"
 
 PTH_GUESS = 0.007
