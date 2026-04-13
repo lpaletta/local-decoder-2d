@@ -51,18 +51,22 @@ animation_path = os.path.join(FIG_PATH, "animation.gif")
 # ---------------------------------------------------------------------
 
 # Preconfigurated view parameters
-example = "pair_of_defects"
+example = "online"
+#example = "pair_of_defects"
 #example = "single_measurement_error"
 #example = "artificial_defect"
 #example = "test"
 
-if example == "pair_of_defects":
+if example == "online":
+    subgrid = None
+    simple_view = True
+
+elif example == "pair_of_defects":
     subgrid = None
     simple_view = True
 
 elif example == "artificial_defect":
-    #subgrid = None
-    subgrid = (slice(16, 30), slice(16, 30))
+    subgrid = None
     simple_view = True
 
 elif example == "single_measurement_error":
@@ -76,32 +80,36 @@ elif example == "test":
 k = 0
 for i in range(len(configuration_history)):
     same = False
-    if i!=0:
-        same = all(np.array_equal(a, b) for a, b in zip(configuration_history[i],configuration_history[i-1]))
-    if not same:
-        defect_array,forward_signal_1_array,forward_signal_2_array,anti_signal_1_array,anti_signal_2_array,stack_1_array,stack_2_array = configuration_history[i]
 
-        view_particles(k,
-                defect_array,
-                forward_signal_1_array,
-                forward_signal_2_array,
-                anti_signal_1_array,
-                anti_signal_2_array,
-                stack_1_array,
-                stack_2_array,
-                subgrid,
-                simple_view,
-                step=step_history[i],
-                path=particles_dir
-                )
-        
-        view_field(k,
-                forward_signal_1_array,
-                forward_signal_2_array,
-                subgrid,
-                path=field_dir)
-        
-        k+=1
+    ### Only plot distinct configurations
+    # if i!=0:
+    #     same = all(np.array_equal(a, b) for a, b in zip(configuration_history[i],configuration_history[i-1]))
+    # if not same:
+    #     defect_array,forward_signal_1_array,forward_signal_2_array,anti_signal_1_array,anti_signal_2_array,stack_1_array,stack_2_array = configuration_history[i]
+
+    defect_array,forward_signal_1_array,forward_signal_2_array,anti_signal_1_array,anti_signal_2_array,stack_1_array,stack_2_array = configuration_history[i]
+
+    view_particles(k,
+            defect_array,
+            forward_signal_1_array,
+            forward_signal_2_array,
+            anti_signal_1_array,
+            anti_signal_2_array,
+            stack_1_array,
+            stack_2_array,
+            subgrid,
+            simple_view,
+            step=step_history[i],
+            path=particles_dir
+            )
+    
+    view_field(k,
+            forward_signal_1_array,
+            forward_signal_2_array,
+            subgrid,
+            path=field_dir)
+    
+    k+=1
 
 
 # Get all PDF files and sort them
@@ -112,7 +120,7 @@ pdf_files.sort(key=lambda f: int(os.path.splitext(os.path.basename(f))[0]))
 frames = []
 for pdf_file in pdf_files:
     # Convert the first page of the PDF to a PIL Image
-    images = convert_from_path(pdf_file, dpi=400)
+    images = convert_from_path(pdf_file, dpi=300)
     png_path = pdf_file.replace(".pdf", ".png")
     images[0].save(png_path, "PNG")  # Save as PNG
     frames.append(Image.open(png_path))  # Open the PNG

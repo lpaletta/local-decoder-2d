@@ -31,8 +31,8 @@ update_existing(SIMULATION_PARAMS,{"recorded_variable": "View"})
 #############################################
 
 # Choose which configuration to simulate
-example = "online"
-#example = "pair_of_defects"
+#example = "online"
+example = "pair_of_defects"
 #example = "single_measurement_error"
 #example = "artificial_defect"
 #example = "test"
@@ -41,8 +41,8 @@ if example == "pair_of_defects":
 
     # --- Initialize a 21x21 data array with a pair of defects ---
     data_array = init_data_array(13)
-    data_array[0, 3:5] = 1
-    data_array[1:5, 3] = 1
+    data_array[2, 2] = 1
+    data_array[1, 3] = 1
     data_array[1::2, ::2] = np.nan # Stabilizer sites
     data_array[::2, 1::2] = np.nan # Stabilizer sites
     data_array = np.roll(data_array, axis=(0, 1), shift=(10, 6))
@@ -55,15 +55,21 @@ elif example == "artificial_defect":
 
     # --- Artificial defects (meas error) at the center (for time <= 7) ---
     artificial_defect = {
-        0: [(22, 23)],
-        1: [(22, 23)],
-        2: [(22, 23)],
-        3: [(22, 23)]
+        0: [(10, 10)],
+        1: [(10, 10)],
+        2: [(10, 10)],
+        3: [(10, 10)],
+        4: [(10, 10)],
+        5: [(10, 10)],
+        6: [(10, 10)],
+        7: [(10, 10)],
+        8: [(10, 10)],
+        9: [(10, 10)]
     }
 
-    update_existing(PHYSICS_PARAMS,{"code_distance": 23})
+    update_existing(PHYSICS_PARAMS,{"code_distance": 21})
     update_existing(DECODER_PARAMS,{}) #Keep defaults
-    update_existing(SIMULATION_PARAMS,{"time_run":14,"artificial_defect": artificial_defect})
+    update_existing(SIMULATION_PARAMS,{"time_run":10,"artificial_defect": artificial_defect})
 
 elif example == "single_measurement_error":
 
@@ -92,9 +98,9 @@ elif example == "test":
 
 if example == "online":
 
-    update_existing(PHYSICS_PARAMS,{"data_error_rate":0.02,"code_distance": 13})
+    update_existing(PHYSICS_PARAMS,{"data_error_rate":0.015,"code_distance": 13})
     update_existing(DECODER_PARAMS,{"online": True,"max_stack":np.inf})
-    update_existing(SIMULATION_PARAMS,{"time_run":100})
+    update_existing(SIMULATION_PARAMS,{"time_run":40})
 
 
 # --- Run the 2D signal simulation ---

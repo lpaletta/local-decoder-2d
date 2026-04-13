@@ -64,6 +64,7 @@ def SIGNAL2D(physics, decoder, simulation):
 
     # Signal arrays
     forward_signal_1_array = init_signal_array(d)
+    prev_forward_signal_1_array = init_signal_array(d)
     anti_signal_1_array = init_signal_array(d)
     stack_1_array = init_signal_array(d)
 
@@ -87,6 +88,12 @@ def SIGNAL2D(physics, decoder, simulation):
         else:
             # Deterministic (noise-free) syndrome extraction
             defect_array = get_defect_determistic(data_array, mask_array)
+
+        if record_var == "View": #Creation and propagation of 1-forward-signals - 1
+            # Append configuration
+            configuration = defect_array, forward_signal_1_array, forward_signal_2_array, anti_signal_1_array, anti_signal_2_array,stack_1_array, stack_2_array
+            configuration_history.append(configuration)
+            step_history.append((t+1,0))
 
         # Optional manual defect injection (for testing / probing dynamics)
         defect_array = add_artificial_defect(defect_array, dict_artificial_defect, t) if artificial_defect_bool else defect_array
@@ -151,7 +158,7 @@ def SIGNAL2D(physics, decoder, simulation):
             defect_array, anti_signal_1_array, stack_1_array, non_empty_stack_1_array
         )
         anti_signal_2_array, stack_2_array = create_anti_signals_2(
-            defect_array, forward_signal_1_array, anti_signal_2_array,
+            defect_array, forward_signal_1_array | prev_forward_signal_1_array, anti_signal_2_array,
             stack_2_array, non_empty_stack_2_array
         )
 
@@ -173,7 +180,7 @@ def SIGNAL2D(physics, decoder, simulation):
                 # Append configuration
                 configuration = defect_array, forward_signal_1_array, forward_signal_2_array, anti_signal_1_array, anti_signal_2_array,stack_1_array, stack_2_array
                 configuration_history.append(configuration)
-                step_history.append((t+1,6))
+                step_history.append((t+1,5))
 
             anti_signal_2_array = propagate_signals_2(anti_signal_2_array, 1, wrap=True)
             forward_signal_2_array, anti_signal_2_array = recombine_signals(
@@ -184,7 +191,7 @@ def SIGNAL2D(physics, decoder, simulation):
                 # Append configuration
                 configuration = defect_array, forward_signal_1_array, forward_signal_2_array, anti_signal_1_array, anti_signal_2_array,stack_1_array, stack_2_array
                 configuration_history.append(configuration)
-                step_history.append((t+1,6))
+                step_history.append((t+1,5))
 
         # Store data for Poisson-time snapshots
         if record_var == "Poisson" and t in t_array:

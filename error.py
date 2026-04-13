@@ -86,8 +86,8 @@ def precompute_shifts_2d(array, distances=(-1,0,1)):
     shifts = {}
     for dy in distances:
         for dx in distances:
-            if (abs(dx)+abs(dy)>1):
-                continue # Skip diagonal shifts that are not needed in the set of rules
+            #if (abs(dx)+abs(dy)>1):
+            #    continue # Skip diagonal shifts that are not needed in the set of rules
             shifts[(dy, dx)] = np.roll(array, shift=(dy, dx), axis=(0,1))
 
     return shifts
