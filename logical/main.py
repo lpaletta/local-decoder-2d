@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 
 # ---------------------------------------------------------------------
 # Path setup
@@ -23,6 +24,7 @@ DATA_FILE = "data.csv"
 PROOF_FILE = "proof.csv"
 
 PTH_GUESS = 0.007
+DMAX = 27
 
 # ---------------------------------------------------------------------
 # Load data
@@ -63,8 +65,9 @@ df = add_logical_fit(df, "logical_error_rate_fit")
 # Fit effective distance
 # -------------------------------------------------------------
 
+#print(r"### Fit effective distance (exponential) ###")
 fit_effective_distance(df)
-add_effective_distance_fit(df, "effective_distance_fit")
+df = add_effective_distance_fit(df, "effective_distance_fit")
 
 # -------------------------------------------------------------
 # Plot fitted logical error (reduced distances)
@@ -81,9 +84,20 @@ for max_stack in MAX_STACK_ALL:
         path=FIG_PATH,
     )
 
+# plot_logical_stack_comp(
+#     df[df["code_distance"].isin(D_PLOT_REDUCED)],
+#     fit=True,
+#     key="logical_error_rate_fit",
+#     plim=PTH_GUESS,
+#     suffix="_comparison",
+#     path=FIG_PATH,
+# )
+
 # -------------------------------------------------------------
 # Plot effective distance scaling
 # -------------------------------------------------------------
 
-plot_effective_distance(df, fit=False, key="effective_distance_fit", path=FIG_PATH)
-plot_effective_distance(df, fit=True, key="effective_distance_fit", path=FIG_PATH)
+plot_effective_distance(df[df["code_distance"].isin(D_PLOT_REDUCED)], fit=False, key="effective_distance_fit", path=FIG_PATH)
+plot_effective_distance(df[df["code_distance"].isin(D_PLOT_REDUCED)], fit=True, key="effective_distance_fit", path=FIG_PATH)
+
+plot_effective_distance_comp(df, fit=False, key="effective_distance_fit", path=FIG_PATH)

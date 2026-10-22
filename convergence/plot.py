@@ -67,18 +67,6 @@ def plot_convergence(df, path):
     for distance, group in df.groupby("code_distance"):
         group = group[group["error_count"] < 3 * group["run_count"] / 4]
 
-        # ax.plot(group["time_run"],
-        #     group["cummulative_error"] / group["time_run"],
-        #     color=DISTANCE_TO_COLOR[distance],
-        #     label=rf"$d={distance}$")
-        # ax.fill_between(
-        #     group["time_run"],
-        #     group["cummulative_error"] / group["time_run"] - 1.96 * group["sigma"] / group["time_run"],
-        #     group["cummulative_error"] / group["time_run"] + 1.96 * group["sigma"] / group["time_run"],
-        #     color=DISTANCE_TO_COLOR[distance],
-        #     alpha=0.3,
-        # )
-
         ax.errorbar(
             group["time_run"],
             group["cummulative_error"] / group["time_run"],
@@ -102,15 +90,6 @@ def plot_convergence(df, path):
     # Grid (as in original)
     ax.grid(which='major', color=GREY, linestyle='-', linewidth=AXWIDTH/2, alpha=0.2)
     ax.grid(which='minor', color=GREY, linestyle='-', linewidth=AXWIDTH/3, alpha=0.2)
-    #ax.grid(False)
-
-    # ax.legend(
-    #     loc="lower right",
-    #     frameon=False,
-    #     fontsize=LABEL_FONTSIZE,
-    #     ncol=2,
-    #     columnspacing=0.5,
-    # )
 
     for spine in ax.spines.values():
         spine.set_linewidth(AXWIDTH)

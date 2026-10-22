@@ -37,8 +37,8 @@ DISTANCE_TO_TIME_RUN_RATIO = 20
 # --- Simulation control ---
 SIMULATION_UPDATE = {
     "time_run": 10_000,
-    "time_simulation_max": 10**7,
-    "error_count_max": 100,
+    "time_simulation_max": 10**8,
+    "error_count_max": 1000,
     "recorded_variable": "Data",
 }
 
@@ -86,6 +86,10 @@ def main():
     error_count_max = SIMULATION_PARAMS["error_count_max"]
 
     for i_e, error_rate in enumerate(error_rate_list):
+
+        if i_e != len(error_rate_list) - 1:
+            continue
+
         update_existing(PHYSICS_PARAMS, {"data_error_rate": error_rate})
         update_existing(
             PHYSICS_PARAMS,
@@ -98,6 +102,8 @@ def main():
             update_existing(SIMULATION_PARAMS, {"time_run": DISTANCE_TO_TIME_RUN_RATIO*distance})
 
             for i_m, max_stack in enumerate(max_stack_list):
+                if i_m == 1:
+                    continue
 
                 update_existing(DECODER_PARAMS, {"max_stack": max_stack})
 
@@ -107,8 +113,6 @@ def main():
                     f"e_m={PHYSICS_PARAMS['meas_error_rate']}, "
                     f"max_stack={max_stack}"
                 )
-
-                time_start = time.time()
 
                 physics, decoder, simulation = PHYSICS_PARAMS, DECODER_PARAMS, SIMULATION_PARAMS
                 T_run = simulation["time_run"]
@@ -121,6 +125,8 @@ def main():
                     initializer=init_worker,
                     initargs=(physics, decoder, simulation, distance),
                 ) as pool:
+
+                    time_start = time.time()
 
                     while (
                         error_count < error_count_max
@@ -159,7 +165,7 @@ def main():
                             error_count_i = unconverged_count_i = run_count_i = 0
 
                         # --- Real time estimate of the logical error rate to skip runs with too low rate
-                        if (T_simulation > T_simulation_max / 20):
+                        if (T_simulation > T_simulation_max / 5):
                             if error_count == 0:
                                 conservative_logical_error = 3.0 / T_simulation
                             else:
@@ -173,7 +179,7 @@ def main():
                             if conservative_logical_error < MIN_LOGICAL_ERROR :
                                 return
 
-                            print("Completed in:", round(time.time() - time_start, 2), "s")
+                        print("Completed in:", round(time.time() - time_start, 2), "s")
 
 if __name__ == "__main__":
     freeze_support()

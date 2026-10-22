@@ -38,6 +38,9 @@ for i_e, error_rate in enumerate(error_rate_list):
                 with open(file_path, "r") as file:
                     output_lines = [line.strip().split() for line in file.readlines()]
 
+                if not any(line for line in output_lines):
+                    raise ValueError(f"Empty output file: {file_path}")
+
                 # Aggregate numeric values from the file
                 input_dict_merged["error_count"] = np.sum([int(line[0]) for line in output_lines], dtype=int)
                 input_dict_merged["unconverged_count"] = np.sum([int(line[1]) for line in output_lines], dtype=int)
@@ -46,7 +49,7 @@ for i_e, error_rate in enumerate(error_rate_list):
 
                 data.append(input_dict_merged)
 
-            except FileNotFoundError:
+            except (FileNotFoundError, ValueError):
                 # skip missing files silently
                 pass
 
@@ -60,12 +63,11 @@ df.sort_index(inplace=True)
 # Keep only relevant columns
 df = df[
     [   "online",
-        "max_stack"
+        "max_stack",
         "code_distance",
         "physical_error_rate",
         "meas_error",
         "error_count",
-        "unconverged_count",
         "run_count",
         "time_run",
     ]

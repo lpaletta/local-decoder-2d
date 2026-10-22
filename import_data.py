@@ -126,41 +126,78 @@ def compute_pL(error_count, T, run_count, online):
     if not online:
         T = 1
 
-    r = error_count / run_count
+    r = error_count / (T * run_count)
 
     if r < 0.75:
-        return (1 - (1 - 4/3 * r) ** (1 / T)) / (3/4)
+        return r
 
     return np.nan
+
+# def compute_pL(error_count, T, run_count, online):
+#     """
+#     Per-round logical error probability (one error at a time, either logical qubit).
+
+#     Online: error_count = number of failed runs after T rounds; we invert
+#         p_fail = 1 - (1 + (1-2p)^T)^2 / 4  ->  p = (1 - (2*sqrt(1-p_fail) - 1)**(1/T))
+#     Offline: error_count = number of erroneous rounds, T = 1.
+#     """
+#     r = error_count / run_count
+#     if not online:
+#         return r
+
+#     if online:
+#         if r>= 0.75:
+#             return np.nan
+#         return (1 - (2 * np.sqrt(1 - r) - 1) ** (1 / T))
 
 
 def compute_sigma(error_count, T, run_count, online):
     """
-    95% confidence interval for pL.
+    Standard deviation (1 sigma) of the logical error probability.
     """
+    r = error_count / run_count
     if not online:
         T = 1
+    return 1/T*np.sqrt(r * (1 - r) / run_count)
 
-    r = error_count / run_count
+# def compute_sigma(error_count, T, run_count, online):
+#     """
+#     1-sigma uncertainty on the estimated per-round logical
+#     error probability p.
+#     """
+#     r = error_count / run_count
 
-    dr = np.sqrt((r*(1-r))/run_count)
-    if r < 0.75:
-        return 1.96 * 1/T * (1 - 4/3 * r)**(1/T - 1)*dr
-    
-    return np.nan
+#     if not online:
+#         return np.sqrt(r * (1 - r) / run_count)
 
+#     if online:
+#         if r >= 0.75:
+#             return np.nan
+
+#         dr = np.sqrt(
+#             r * (1 - r) / run_count
+#         )
+
+#         A = 2 * np.sqrt(1 - r) - 1
+
+#         jac = (
+#             A ** (1 / T - 1)
+#             / (T * np.sqrt(1 - r))
+#         )
+
+#         return jac * dr
+
+#     return np.nan
 
 def compute_ratio(error_count, run_count):
     """
-    Raw error ratio capped at 0.5.
+    Estimate ratio of error_count/run_count.
     """
-    r = error_count / run_count
-    return min(r, 0.75)
-
+    return error_count / run_count
 
 def compute_sigma_ratio(error_count, run_count):
     """
-    95% confidence interval for raw error ratio.
+    Standard deviation (1 sigma) of the ratio error_count/run_count.
     """
     r = error_count / run_count
-    return 1.96 * np.sqrt(r * (1 - r)) / np.sqrt(run_count)
+    return np.sqrt(r * (1 - r) / run_count)

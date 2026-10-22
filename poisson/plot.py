@@ -79,7 +79,7 @@ def plot_poisson(df, path):
         ax.errorbar(
             group["time_run"],
             (1 - 4/3*group["cummulative_error"]),
-            yerr= 4/3*group["sigma"],
+            yerr= 2*4/3*group["sigma"],
             fmt="o",
             markersize=2,
             color=DISTANCE_TO_COLOR[distance],
@@ -87,7 +87,7 @@ def plot_poisson(df, path):
         )
 
     ax.set_xlabel(r"simulation time ($\tau$)", fontsize=LABEL_FONTSIZE, labelpad=1)
-    ax.set_ylabel(r"$1 - \frac{4}{3} \times P(\tau)$", fontsize=LABEL_FONTSIZE, labelpad=-12)
+    ax.set_ylabel(r"$1 - 4 \cdot P(\tau)/3$", fontsize=LABEL_FONTSIZE, labelpad=-10)
 
     ax.set_yscale("log")
     ax.set_xlim(*X_POISSON_LIM)

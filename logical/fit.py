@@ -30,27 +30,41 @@ def fit_logical(df, pth_guess, plim_fit):
         upper_bounds = np.array(gamma_bounds + [100, 2 * pth_guess])
 
         xdata = (df_fit["code_distance"].map(d_to_index).to_numpy(),df_fit["code_distance"].to_numpy(), df_fit["physical_error_rate"].to_numpy())
-
         ydata = np.log(df_fit["logical_error_rate"].to_numpy())
-        popt, _ = curve_fit(
-            f=func_logical,
-            xdata=xdata,
-            ydata=ydata,
-            p0=initial_guess,
-            bounds=(0, upper_bounds),
-        )
+        yerr = np.log(df_fit["sigma"].to_numpy())
+
+        popt, pcov = curve_fit(
+                    f=func_logical,
+                    xdata=xdata,
+                    ydata=ydata,
+                    sigma=yerr,
+                    p0=initial_guess,
+                    bounds=(0, upper_bounds),
+                )
+
+        perr = np.sqrt(np.diag(pcov))
 
         gamma_d_values = popt[:-2]
+        gamma_d_errs = perr[:-2]
         pth = popt[-2]
+        pth_err = perr[-2]
         A = popt[-1]
+        A_err = perr[-1]
 
         d_to_gamma_d = dict(zip(d_values, gamma_d_values))
+        d_to_gamma_d_err = dict(zip(d_values, gamma_d_errs))
 
-        df.loc[df["max_stack"] == max_stack, "A"] = A
-        df.loc[df["max_stack"] == max_stack, "error_threshold"] = pth
-        df.loc[df["max_stack"] == max_stack, "effective_distance"] = df["code_distance"].map(d_to_gamma_d)
+        mask = df["max_stack"] == max_stack
+        df.loc[mask, "A"] = A
+        df.loc[mask, "sigma_A"] = A_err
+        df.loc[mask, "error_threshold"] = pth
+        df.loc[mask, "sigma_error_threshold"] = pth_err
+        df.loc[mask, "effective_distance"] = df["code_distance"].map(d_to_gamma_d)
+        df.loc[mask, "sigma_effective_distance"] = df["code_distance"].map(d_to_gamma_d_err)
 
-        print(f"A = {A}, p_th = {pth}")
+        print(f"A     = {A:.3g} ± {2*A_err:.2g}")
+        print(f"p_th  = {pth:.3g} ± {2*pth_err:.2g}")
+        print("")
     return df
 
 def fit_effective_distance(df):
@@ -64,19 +78,43 @@ def fit_effective_distance(df):
             .loc[lambda x: (x["code_distance"] >= 9) & (x["code_distance"] <= 100)]
         )
 
-        popt, _ = curve_fit(
+        popt, pcov = curve_fit(
             f=func_exp,
             xdata=df_fit["code_distance"].to_numpy(),
             ydata=df_fit["effective_distance"].to_numpy(),
+            sigma=df_fit["sigma_effective_distance"].to_numpy(),
             p0=[1, 1],
             bounds=(0, [5, 1]),
+            absolute_sigma=True,
         )
 
+        perr = np.sqrt(np.diag(pcov))
         alpha, beta = popt
-        df.loc[df["max_stack"] == max_stack, "alpha"] = alpha
-        df.loc[df["max_stack"] == max_stack, "beta"] = beta
+        alpha_err, beta_err = perr
 
-        print(f"alpha = {alpha}, beta = {beta}")
+        mask = df["max_stack"] == max_stack
+        df.loc[mask, "alpha"] = alpha
+        df.loc[mask, "sigma_alpha"] = alpha_err
+        df.loc[mask, "beta"] = beta
+        df.loc[mask, "sigma_beta"] = beta_err
+
+        print(f"alpha = {alpha:.3g} ± {2*alpha_err:.2g}")
+        print(f"beta  = {beta:.3g} ± {2*beta_err:.2g}")
+        print("")
+
+        # popt, _ = curve_fit(
+        #     f=func_exp,
+        #     xdata=df_fit["code_distance"].to_numpy(),
+        #     ydata=df_fit["effective_distance"].to_numpy(),
+        #     p0=[1, 1],
+        #     bounds=(0, [5, 1]),
+        # )
+
+        # alpha, beta = popt
+        # df.loc[df["max_stack"] == max_stack, "alpha"] = alpha
+        # df.loc[df["max_stack"] == max_stack, "beta"] = beta
+
+        # print(f"alpha = {alpha}, beta = {beta}")
     return df
 
 def func_logical(X, *params):
@@ -106,3 +144,6 @@ def ansatz(A, d, p, pth, gamma_d):
 
 def func_exp(d, alpha, beta):
     return alpha * d ** beta
+
+def func_lin(d, a, b):
+    return a * d + b
